@@ -60,7 +60,9 @@ function clearHistory() {
     showToast('История очищена', 'trash', 'text-red-400');
 }
 
-// ============ ТРАНСЛИТЕРАЦИЯ (RU → EN) для PDF ============
+// ============ ТРАНСЛИТЕРАЦИЯ (RU → EN) — запасной вариант ============
+// Больше не используется в PDF (там теперь кириллический шрифт Roboto),
+// но оставлена как fallback на случай отсутствия шрифта.
 function translit(text) {
     const map = {
         'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'e','ж':'zh',
@@ -176,7 +178,7 @@ function renderHistory() {
     }).join('');
 }
 
-// ============ ЭКСПОРТ В PDF (ИСПРАВЛЕНО) ============
+// ============ ЭКСПОРТ В PDF (КИРИЛЛИЦА через Roboto) ============
 function exportPDF() {
     const history = getHistory();
 
@@ -196,24 +198,43 @@ function exportPDF() {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
 
+        // ✅ Пытаемся включить кириллический шрифт Roboto.
+        //    Если roboto-font.js не подключён — работаем на Helvetica
+        //    и транслитерируем текст (fallback), чтобы не было кракозябр.
+        let useCyrillic = false;
+        try {
+            const fonts = doc.getFontList();
+            if (fonts && fonts.Roboto) {
+                doc.setFont('Roboto', 'normal');
+                useCyrillic = true;
+            } else {
+                console.warn('Шрифт Roboto не подключён — используется Helvetica + транслитерация.');
+            }
+        } catch (e) {
+            console.warn('Не удалось установить Roboto:', e);
+        }
+
+        // Хелпер: если кириллица доступна — оставляем как есть, иначе транслит
+        const T = (str) => (useCyrillic ? String(str) : translit(str));
+
         // --- Заголовок ---
         doc.setFontSize(20);
         doc.setTextColor(34, 197, 94);
-        doc.text('1RM Lab - Otchet', 14, 20);
+        doc.text(T('1RM Lab — Отчёт'), 14, 20);
 
         doc.setFontSize(10);
         doc.setTextColor(120);
-        doc.text('Sozdano: ' + new Date().toLocaleDateString('ru-RU'), 14, 27);
+        doc.text(T('Создано: ' + new Date().toLocaleDateString('ru-RU')), 14, 27);
 
         // --- Шапка таблицы ---
         let y = 40;
         doc.setFontSize(9);
         doc.setTextColor(60);
-        doc.text('Uprazhnenie', 14, y);
-        doc.text('Ves', 95, y);
-        doc.text('Povt', 118, y);
+        doc.text(T('Упражнение'), 14, y);
+        doc.text(T('Вес'), 95, y);
+        doc.text(T('Повт'), 118, y);
         doc.text('RPE', 140, y);
-        doc.text('1PM', 168, y);
+        doc.text(T('1ПМ'), 168, y);
         doc.setDrawColor(200);
         doc.line(14, y + 2, 196, y + 2);
         y += 9;
@@ -223,24 +244,25 @@ function exportPDF() {
             // Новая страница при переполнении
             if (y > 275) {
                 doc.addPage();
+                if (useCyrillic) doc.setFont('Roboto', 'normal'); // шрифт на новой странице
                 y = 20;
             }
 
             const d = new Date(item.date).toLocaleDateString('ru-RU');
 
-            // Транслитерация названия (чтобы не было кракозябр)
-            let name = translit(item.exercise);
+            // ✅ Русский текст напрямую (или транслит — как fallback)
+            let name = String(item.exercise || 'Упражнение');
             if (name.length > 30) name = name.slice(0, 30) + '...';
 
             doc.setTextColor(30);
             doc.setFontSize(9);
-            doc.text(name + ' (' + d + ')', 14, y);
+            doc.text(T(name + ' (' + d + ')'), 14, y);
             doc.text(String(item.weight), 95, y);
             doc.text(String(item.reps), 118, y);
             doc.text(String(item.rpe), 140, y);
 
             doc.setTextColor(34, 197, 94);
-            doc.text(String(item.oneRM) + ' kg', 168, y);
+            doc.text(T(String(item.oneRM) + ' кг'), 168, y);
 
             y += 8;
         });
@@ -248,7 +270,7 @@ function exportPDF() {
         // --- Подпись внизу ---
         doc.setFontSize(8);
         doc.setTextColor(150);
-        doc.text('Alex Lashkin - 2026 - 1RM Lab', 14, 290);
+        doc.text(T('Alex Lashkin — 2026 — 1RM Lab'), 14, 290);
 
         // --- Сохранение ---
         doc.save('1RM-Lab-' + Date.now() + '.pdf');
