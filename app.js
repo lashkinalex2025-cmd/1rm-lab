@@ -1,468 +1,314 @@
-'use strict';
+// ============================================================
+//  1RM Lab — Основной скрипт приложения
+//  Разработчик: Alex Lashkin · 2026
+// ============================================================
 
-/* ============================================================
-   1RM Lab — app.js
-   Логика калькулятора одноповторного максимума
-   ============================================================ */
+// ============ КОНСТАНТЫ ============
+const STORAGE_KEY = '1rm-lab-history';
 
-// ---------- Ключ для localStorage ----------
-const STORAGE_KEY = '1rm_lab_history';
-
-// ---------- Формулы расчёта 1ПМ ----------
-// Каждая принимает (вес, повторы) и возвращает число
+// ============ ФОРМУЛЫ РАСЧЁТА 1RM ============
 const FORMULAS = {
-    epley:   (w, r) => w * (1 + r / 30),
-    brzycki: (w, r) => w * 36 / (37 - r),
-    lombardi:(w, r) => w * Math.pow(r, 0.10),
-    oconner: (w, r) => w * (1 + r / 40),
+    epley:     (w, r) => w * (1 + r / 30),
+    brzycki:   (w, r) => w * (36 / (37 - r)),
+    lombardi:  (w, r) => w * Math.pow(r, 0.10),
+    oconner:   (w, r) => w * (1 + 0.025 * r)
 };
 
-// Человекочитаемые названия формул
-const FORMULA_NAMES = {
-    epley: 'Epley',
-    brzycki: 'Brzycki',
-    lombardi: 'Lombardi',
-    oconner: "O'Conner",
-};
+// ============ РАСЧЁТ 1RM ============
+function calculate1RM(weight, reps, rpe = 10, formula = 'epley') {
+    weight = parseFloat(weight);
+    reps = parseInt(reps);
+    rpe = parseFloat(rpe) || 10;
 
-// ---------- Коэффициенты RPE ----------
-// Чем ниже RPE (были в запасе повторы), тем выше расчётный 1ПМ.
-// Множитель применяется к результату формулы.
-const RPE_FACTORS = {
-    '10': 1.000,
-    '9.5': 1.012,
-    '9': 1.025,
-    '8.5': 1.038,
-    '8': 1.052,
-    '7.5': 1.066,
-    '7': 1.080,
-    '6': 1.110,
-};
+    if (!weight || !reps || weight <= 0 || reps <= 0) return 0;
 
-// ---------- Проценты для рабочих весов ----------
-const PERCENT_STEPS = [95, 90, 85, 80, 75, 70, 65, 60];
+    // Поправка на RPE (если не до отказа — добавляем "виртуальные" повторы)
+    const rpeAdjust = 10 - rpe;
+    const effectiveReps = reps + rpeAdjust;
 
-// ---------- Ссылки на элементы DOM ----------
-const $ = (id) => document.getElementById(id);
+    // Если 1 повтор при RPE 10 — это и есть 1ПМ
+    if (effectiveReps <= 1) return Math.round(weight);
 
-const els = {
-    form:          $('calc-form'),
-    exercise:      $('exercise'),
-    weight:        $('weight'),
-    reps:          $('reps'),
-    rpe:           $('rpe'),
-    formula:       $('formula'),
-    resultCard:    $('result-card'),
-    resultValue:   $('result-value'),
-    resultFormula: $('result-formula'),
-    percentages:   $('percentages'),
-    historyList:   $('history-list'),
-    historyCount:  $('history-count'),
-    emptyState:    $('empty-state'),
-    exportBtn:     $('export-btn'),
-    clearBtn:      $('clear-btn'),
-    infoBtn:       $('info-btn'),
-    infoModal:     $('info-modal'),
-    closeModal:    $('close-modal'),
-    toast:         $('toast'),
-    toastMsg:      $('toast-msg'),
-    toastIcon:     $('toast-icon'),
-};
+    const fn = FORMULAS[formula] || FORMULAS.epley;
+    const result = fn(weight, effectiveReps);
 
-// ---------- Состояние ----------
-let history = [];       // массив записей
-let lastResult = null;  // последний расчёт (для сохранения)
-
-/* ============================================================
-   ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
-   ============================================================ */
-
-// ---------- Округление до 0.5 кг ----------
-function roundHalf(num) {
-    return Math.round(num * 2) / 2;
+    return Math.round(result);
 }
 
-// ---------- Форматирование числа (убираем .0) ----------
-function fmt(num) {
-    const r = roundHalf(num);
-    return Number.isInteger(r) ? String(r) : r.toFixed(1);
-}
-
-// ---------- Форматирование даты ----------
-function formatDate(ts) {
-    const d = new Date(ts);
-    const day = String(d.getDate()).padStart(2, '0');
-    const mon = String(d.getMonth() + 1).padStart(2, '0');
-    const hrs = String(d.getHours()).padStart(2, '0');
-    const min = String(d.getMinutes()).padStart(2, '0');
-    return `${day}.${mon} ${hrs}:${min}`;
-}
-
-// ---------- Генерация уникального ID ----------
-function genId() {
-    return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-}
-
-// ---------- Экранирование HTML (защита от XSS) ----------
-function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-}
-
-/* ============================================================
-   TOAST-УВЕДОМЛЕНИЯ
-   ============================================================ */
-
-let toastTimer = null;
-
-function showToast(message, type = 'success') {
-    if (!els.toast) return;
-
-    els.toastMsg.textContent = message;
-
-    // Меняем иконку и цвет по типу
-    const icons = {
-        success: 'fa-check text-emerald-400',
-        error:   'fa-triangle-exclamation text-red-400',
-        info:    'fa-circle-info text-blue-400',
-    };
-    els.toastIcon.className = 'fa-solid ' + (icons[type] || icons.success);
-
-    // Показываем
-    els.toast.classList.remove('hidden');
-    els.toast.classList.add('fade-in-up');
-
-    // Автоскрытие через 2.5 сек
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => {
-        els.toast.classList.add('hidden');
-    }, 2500);
-}
-
-/* ============================================================
-   РАСЧЁТ 1ПМ
-   ============================================================ */
-
-function calculate1RM(weight, reps, rpe, formulaKey) {
-    // 1 повтор = вес и есть максимум (с учётом RPE)
-    const base = FORMULAS[formulaKey](weight, reps);
-    const rpeFactor = RPE_FACTORS[String(rpe)] || 1;
-    return base * rpeFactor;
-}
-
-// ---------- Валидация ввода ----------
-function validateInput(weight, reps) {
-    if (!weight || weight <= 0) {
-        showToast('Введите корректный вес', 'error');
-        return false;
-    }
-    if (!reps || reps < 1) {
-        showToast('Введите число повторений', 'error');
-        return false;
-    }
-    if (reps > 30) {
-        showToast('Максимум 30 повторений', 'error');
-        return false;
-    }
-    return true;
-}
-
-/* ============================================================
-   ОТОБРАЖЕНИЕ РЕЗУЛЬТАТА
-   ============================================================ */
-
-function renderResult(oneRM, formulaKey) {
-    // Показываем карточку
-    els.resultCard.classList.remove('hidden');
-    els.resultCard.classList.add('fade-in-up');
-
-    // Значение 1ПМ
-    els.resultValue.textContent = fmt(oneRM);
-    els.resultFormula.textContent = 'по формуле ' + (FORMULA_NAMES[formulaKey] || formulaKey);
-
-    // Проценты (рабочие веса)
-    els.percentages.innerHTML = PERCENT_STEPS.map(pct => {
-        const w = fmt(oneRM * pct / 100);
-        return `
-            <div class="bg-zinc-800/50 rounded-lg py-2 px-1">
-                <div class="text-xs text-emerald-400 font-semibold">${pct}%</div>
-                <div class="text-sm font-bold text-white">${w}</div>
-            </div>
-        `;
-    }).join('');
-
-    // Прокрутка к результату
-    els.resultCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
-}
-
-/* ============================================================
-   РАБОТА С localStorage
-   ============================================================ */
-
-function loadHistory() {
+// ============ РАБОТА С ИСТОРИЕЙ ============
+function getHistory() {
     try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        history = raw ? JSON.parse(raw) : [];
-        if (!Array.isArray(history)) history = [];
+        const data = localStorage.getItem(STORAGE_KEY);
+        return data ? JSON.parse(data) : [];
     } catch (e) {
-        console.warn('Ошибка чтения истории:', e);
-        history = [];
+        console.error('Ошибка чтения истории:', e);
+        return [];
     }
 }
 
-function saveHistory() {
-    try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
-    } catch (e) {
-        console.warn('Ошибка сохранения истории:', e);
-        showToast('Не удалось сохранить', 'error');
-    }
-}
-
-/* ============================================================
-   РЕНДЕР ИСТОРИИ
-   ============================================================ */
-
-function renderHistory() {
-    // Счётчик
-    els.historyCount.textContent = history.length;
-
-    // Пустое состояние
-    if (history.length === 0) {
-        els.emptyState.classList.remove('hidden');
-        els.historyList.innerHTML = '';
-        els.exportBtn.disabled = true;
-        els.exportBtn.classList.add('opacity-40', 'cursor-not-allowed');
-        return;
-    }
-
-    els.emptyState.classList.add('hidden');
-    els.exportBtn.disabled = false;
-    els.exportBtn.classList.remove('opacity-40', 'cursor-not-allowed');
-
-    // Рендерим карточки (новые сверху)
-    els.historyList.innerHTML = history.map(item => `
-        <div class="bg-zinc-800/40 border border-zinc-700/40 rounded-xl p-4
-                    flex items-center justify-between gap-3 fade-in-up">
-            <div class="min-w-0 flex-1">
-                <p class="font-semibold text-white truncate">
-                    ${escapeHtml(item.exercise || 'Упражнение')}
-                </p>
-                <p class="text-xs text-zinc-500 mt-0.5">
-                    ${fmt(item.weight)} кг × ${item.reps} · RPE ${item.rpe}
-                    · <span class="text-zinc-600">${FORMULA_NAMES[item.formula] || item.formula}</span>
-                </p>
-                <p class="text-[10px] text-zinc-600 mt-1">
-                    <i class="fa-regular fa-clock"></i> ${formatDate(item.date)}
-                </p>
-            </div>
-
-            <div class="text-right shrink-0">
-                <div class="text-2xl font-extrabold text-emerald-400">${fmt(item.oneRM)}</div>
-                <div class="text-[10px] text-zinc-500 -mt-1">кг 1ПМ</div>
-            </div>
-
-            <button data-id="${item.id}"
-                    class="delete-item w-8 h-8 rounded-lg bg-zinc-800 shrink-0
-                           flex items-center justify-center text-zinc-500
-                           hover:text-red-400 hover:bg-red-500/10">
-                <i class="fa-solid fa-xmark text-sm"></i>
-            </button>
-        </div>
-    `).join('');
-
-    // Навешиваем удаление на каждую кнопку
-    document.querySelectorAll('.delete-item').forEach(btn => {
-        btn.addEventListener('click', () => deleteItem(btn.dataset.id));
-    });
-}
-
-/* ============================================================
-   ДОБАВЛЕНИЕ / УДАЛЕНИЕ ЗАПИСЕЙ
-   ============================================================ */
-
-function addToHistory(record) {
-    history.unshift(record);          // новая запись — в начало
-    if (history.length > 50) {         // лимит 50 записей
-        history = history.slice(0, 50);
-    }
-    saveHistory();
-    renderHistory();
-}
-
-function deleteItem(id) {
-    history = history.filter(item => item.id !== id);
-    saveHistory();
-    renderHistory();
-    showToast('Запись удалена', 'info');
+function saveToHistory(record) {
+    const history = getHistory();
+    history.unshift(record);
+    // Ограничиваем историю 100 записями
+    if (history.length > 100) history.length = 100;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
 }
 
 function clearHistory() {
-    if (history.length === 0) return;
-    if (!confirm('Удалить всю историю тренировок?')) return;
-    history = [];
-    saveHistory();
+    localStorage.removeItem(STORAGE_KEY);
     renderHistory();
-    showToast('История очищена', 'info');
+    showToast('История очищена', 'trash', 'text-red-400');
 }
 
-/* ============================================================
-   ЭКСПОРТ В PDF (jsPDF)
-   ============================================================ */
+// ============ ТРАНСЛИТЕРАЦИЯ (RU → EN) для PDF ============
+function translit(text) {
+    const map = {
+        'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'e','ж':'zh',
+        'з':'z','и':'i','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o',
+        'п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'h','ц':'ts',
+        'ч':'ch','ш':'sh','щ':'sch','ъ':'','ы':'y','ь':'','э':'e','ю':'yu','я':'ya',
+        'А':'A','Б':'B','В':'V','Г':'G','Д':'D','Е':'E','Ё':'E','Ж':'Zh',
+        'З':'Z','И':'I','Й':'Y','К':'K','Л':'L','М':'M','Н':'N','О':'O',
+        'П':'P','Р':'R','С':'S','Т':'T','У':'U','Ф':'F','Х':'H','Ц':'Ts',
+        'Ч':'Ch','Ш':'Sh','Щ':'Sch','Ъ':'','Ы':'Y','Ь':'','Э':'E','Ю':'Yu','Я':'Ya'
+    };
+    return String(text).split('').map((ch) => (ch in map ? map[ch] : ch)).join('');
+}
 
-function exportPDF() {
-    if (history.length === 0) {
-        showToast('История пуста', 'error');
-        return;
-    }
+// ============ TOAST-УВЕДОМЛЕНИЯ ============
+function showToast(message, icon = 'circle-check', color = 'text-emerald-400') {
+    const existing = document.getElementById('toast');
+    if (existing) existing.remove();
 
-    // jsPDF подключается через CDN → window.jspdf
-    if (!window.jspdf || !window.jspdf.jsPDF) {
-        showToast('PDF-библиотека не загружена', 'error');
-        return;
-    }
+    const toast = document.createElement('div');
+    toast.id = 'toast';
+    toast.className = 'fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 ' +
+        'bg-zinc-800 border border-zinc-700 px-5 py-3 rounded-xl shadow-lg ' +
+        'transition-all duration-300 opacity-0 translate-y-4';
+    toast.innerHTML =
+        '<i class="fa-solid fa-' + icon + ' ' + color + '"></i>' +
+        '<span class="text-sm text-zinc-100">' + message + '</span>';
 
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
+    document.body.appendChild(toast);
 
-    // --- Заголовок ---
-    doc.setFontSize(20);
-    doc.setTextColor(16, 185, 129); // emerald
-    doc.text('1RM Lab — Journal', 14, 20);
-
-    doc.setFontSize(10);
-    doc.setTextColor(120);
-    doc.text('Exported: ' + formatDate(Date.now()), 14, 27);
-
-    // --- Линия ---
-    doc.setDrawColor(200);
-    doc.line(14, 31, 196, 31);
-
-    // --- Шапка таблицы ---
-    let y = 40;
-    doc.setFontSize(9);
-    doc.setTextColor(80);
-    doc.text('Exercise', 14, y);
-    doc.text('Weight x Reps', 80, y);
-    doc.text('RPE', 130, y);
-    doc.text('1RM', 160, y);
-    y += 4;
-    doc.line(14, y, 196, y);
-    y += 7;
-
-    // --- Строки ---
-    doc.setTextColor(40);
-    history.forEach(item => {
-        if (y > 280) {            // новая страница
-            doc.addPage();
-            y = 20;
-        }
-        const ex = (item.exercise || 'Exercise').slice(0, 30);
-        doc.text(ex, 14, y);
-        doc.text(`${fmt(item.weight)} kg x ${item.reps}`, 80, y);
-        doc.text(String(item.rpe), 130, y);
-
-        doc.setTextColor(16, 185, 129);
-        doc.text(`${fmt(item.oneRM)} kg`, 160, y);
-        doc.setTextColor(40);
-
-        y += 8;
+    // Плавное появление
+    requestAnimationFrame(() => {
+        toast.classList.remove('opacity-0', 'translate-y-4');
     });
 
-    // --- Сохранение ---
-    doc.save('1rm-lab-journal.pdf');
-    showToast('PDF сохранён', 'success');
+    // Автоскрытие
+    setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-y-4');
+        setTimeout(() => toast.remove(), 300);
+    }, 2500);
 }
 
-/* ============================================================
-   ОБРАБОТЧИКИ СОБЫТИЙ
-   ============================================================ */
+// ============ ОБРАБОТКА ФОРМЫ РАСЧЁТА ============
+function handleCalculate(e) {
+    if (e) e.preventDefault();
 
-function handleSubmit(e) {
-    e.preventDefault();
+    const exercise = document.getElementById('exercise').value.trim() || 'Упражнение';
+    const weight = document.getElementById('weight').value;
+    const reps = document.getElementById('reps').value;
+    const rpe = document.getElementById('rpe')?.value || 10;
+    const formula = document.getElementById('formula')?.value || 'epley';
 
-    const weight  = parseFloat(els.weight.value);
-    const reps    = parseInt(els.reps.value, 10);
-    const rpe     = els.rpe.value;
-    const formula = els.formula.value;
-    const exercise = els.exercise.value.trim() || 'Упражнение';
-
-    // Валидация
-    if (!validateInput(weight, reps)) return;
-
-    // Расчёт
     const oneRM = calculate1RM(weight, reps, rpe, formula);
 
-    // Показ результата
-    renderResult(oneRM, formula);
-
-    // Сохраняем в историю
-    const record = {
-        id: genId(),
-        exercise,
-        weight,
-        reps,
-        rpe,
-        formula,
-        oneRM,
-        date: Date.now(),
-    };
-    addToHistory(record);
-
-    showToast('Расчёт добавлен в историю', 'success');
-}
-
-// ---------- Модальное окно «Инфо» ----------
-function openModal() {
-    els.infoModal.classList.remove('hidden');
-    els.infoModal.classList.add('flex');
-}
-
-function closeModalFn() {
-    els.infoModal.classList.add('hidden');
-    els.infoModal.classList.remove('flex');
-}
-
-/* ============================================================
-   ИНИЦИАЛИЗАЦИЯ
-   ============================================================ */
-
-function init() {
-    // Загружаем историю из localStorage
-    loadHistory();
-    renderHistory();
-
-    // Форма расчёта
-    if (els.form) {
-        els.form.addEventListener('submit', handleSubmit);
+    if (oneRM === 0) {
+        showToast('Введите корректные данные', 'circle-info', 'text-amber-400');
+        return;
     }
 
-    // Кнопки
-    if (els.exportBtn) els.exportBtn.addEventListener('click', exportPDF);
-    if (els.clearBtn)  els.clearBtn.addEventListener('click', clearHistory);
+    // Показываем результат
+    const resultEl = document.getElementById('result');
+    if (resultEl) {
+        resultEl.textContent = oneRM + ' кг';
+        resultEl.classList.add('animate-pulse');
+        setTimeout(() => resultEl.classList.remove('animate-pulse'), 600);
+    }
 
-    // Модалка
-    if (els.infoBtn)    els.infoBtn.addEventListener('click', openModal);
-    if (els.closeModal) els.closeModal.addEventListener('click', closeModalFn);
-    if (els.infoModal) {
-        // Закрытие по клику на фон
-        els.infoModal.addEventListener('click', (e) => {
-            if (e.target === els.infoModal) closeModalFn();
+    // Сохраняем в историю
+    saveToHistory({
+        exercise: exercise,
+        weight: parseFloat(weight),
+        reps: parseInt(reps),
+        rpe: parseFloat(rpe),
+        formula: formula,
+        oneRM: oneRM,
+        date: new Date().toISOString()
+    });
+
+    renderHistory();
+    showToast('1ПМ: ' + oneRM + ' кг', 'dumbbell', 'text-emerald-400');
+}
+
+// ============ ОТРИСОВКА ИСТОРИИ ============
+function renderHistory() {
+    const container = document.getElementById('history');
+    if (!container) return;
+
+    const history = getHistory();
+
+    if (history.length === 0) {
+        container.innerHTML =
+            '<p class="text-center text-zinc-500 text-sm py-6">' +
+            '<i class="fa-solid fa-inbox mr-2"></i>История пуста</p>';
+        return;
+    }
+
+    container.innerHTML = history.map((item) => {
+        const date = new Date(item.date).toLocaleDateString('ru-RU', {
+            day: '2-digit', month: '2-digit', year: 'numeric'
+        });
+        return (
+            '<div class="flex items-center justify-between bg-zinc-800/50 border border-zinc-700/50 ' +
+            'rounded-lg px-4 py-3 hover:border-emerald-500/40 transition">' +
+                '<div>' +
+                    '<p class="text-sm font-medium text-zinc-100">' + item.exercise + '</p>' +
+                    '<p class="text-xs text-zinc-500">' +
+                        item.weight + ' кг × ' + item.reps + ' · RPE ' + item.rpe + ' · ' + date +
+                    '</p>' +
+                '</div>' +
+                '<span class="text-emerald-400 font-bold text-lg">' + item.oneRM + ' кг</span>' +
+            '</div>'
+        );
+    }).join('');
+}
+
+// ============ ЭКСПОРТ В PDF (ИСПРАВЛЕНО) ============
+function exportPDF() {
+    const history = getHistory();
+
+    if (history.length === 0) {
+        showToast('Нет данных для экспорта', 'circle-info', 'text-zinc-400');
+        return;
+    }
+
+    // Проверка: загружена ли библиотека jsPDF
+    if (!window.jspdf || !window.jspdf.jsPDF) {
+        showToast('Библиотека PDF не загружена', 'triangle-exclamation', 'text-red-400');
+        console.error('jsPDF не найден. Проверьте подключение скрипта в <head>.');
+        return;
+    }
+
+    try {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+
+        // --- Заголовок ---
+        doc.setFontSize(20);
+        doc.setTextColor(34, 197, 94);
+        doc.text('1RM Lab - Otchet', 14, 20);
+
+        doc.setFontSize(10);
+        doc.setTextColor(120);
+        doc.text('Sozdano: ' + new Date().toLocaleDateString('ru-RU'), 14, 27);
+
+        // --- Шапка таблицы ---
+        let y = 40;
+        doc.setFontSize(9);
+        doc.setTextColor(60);
+        doc.text('Uprazhnenie', 14, y);
+        doc.text('Ves', 95, y);
+        doc.text('Povt', 118, y);
+        doc.text('RPE', 140, y);
+        doc.text('1PM', 168, y);
+        doc.setDrawColor(200);
+        doc.line(14, y + 2, 196, y + 2);
+        y += 9;
+
+        // --- Строки таблицы ---
+        history.forEach((item) => {
+            // Новая страница при переполнении
+            if (y > 275) {
+                doc.addPage();
+                y = 20;
+            }
+
+            const d = new Date(item.date).toLocaleDateString('ru-RU');
+
+            // Транслитерация названия (чтобы не было кракозябр)
+            let name = translit(item.exercise);
+            if (name.length > 30) name = name.slice(0, 30) + '...';
+
+            doc.setTextColor(30);
+            doc.setFontSize(9);
+            doc.text(name + ' (' + d + ')', 14, y);
+            doc.text(String(item.weight), 95, y);
+            doc.text(String(item.reps), 118, y);
+            doc.text(String(item.rpe), 140, y);
+
+            doc.setTextColor(34, 197, 94);
+            doc.text(String(item.oneRM) + ' kg', 168, y);
+
+            y += 8;
+        });
+
+        // --- Подпись внизу ---
+        doc.setFontSize(8);
+        doc.setTextColor(150);
+        doc.text('Alex Lashkin - 2026 - 1RM Lab', 14, 290);
+
+        // --- Сохранение ---
+        doc.save('1RM-Lab-' + Date.now() + '.pdf');
+        showToast('PDF сохранён!', 'file-pdf', 'text-emerald-400');
+
+    } catch (err) {
+        console.error('Ошибка генерации PDF:', err);
+        showToast('Ошибка создания PDF', 'triangle-exclamation', 'text-red-400');
+    }
+}
+
+// ============ РЕГИСТРАЦИЯ SERVICE WORKER ============
+function registerServiceWorker() {
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js')
+                .then((reg) => {
+                    console.log('SW: зарегистрирован ✅', reg.scope);
+                })
+                .catch((err) => {
+                    console.error('SW: ошибка регистрации', err);
+                });
+        });
+    }
+}
+
+// ============ ИНИЦИАЛИЗАЦИЯ ============
+document.addEventListener('DOMContentLoaded', () => {
+
+    // Форма расчёта
+    const form = document.getElementById('calc-form');
+    if (form) {
+        form.addEventListener('submit', handleCalculate);
+    }
+
+    // Кнопка расчёта (если без формы)
+    const calcBtn = document.getElementById('calc-btn');
+    if (calcBtn) {
+        calcBtn.addEventListener('click', handleCalculate);
+    }
+
+    // Кнопка экспорта PDF
+    const pdfBtn = document.getElementById('export-pdf');
+    if (pdfBtn) {
+        pdfBtn.addEventListener('click', exportPDF);
+    }
+
+    // Кнопка очистки истории
+    const clearBtn = document.getElementById('clear-history');
+    if (clearBtn) {
+        clearBtn.addEventListener('click', () => {
+            if (confirm('Очистить всю историю?')) clearHistory();
         });
     }
 
-    // Закрытие модалки по Esc
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') closeModalFn();
-    });
+    // Первичная отрисовка
+    renderHistory();
 
-    console.log('✅ 1RM Lab запущен');
-}
+    // Регистрация Service Worker
+    registerServiceWorker();
 
-// ---------- Запуск после загрузки DOM ----------
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-} else {
-    init();
-}
+    console.log('1RM Lab готов к работе 💪');
+});
