@@ -1,60 +1,101 @@
-// ===== 1RM Lab — Service Worker =====
-const CACHE_NAME = '1rm-lab-v3';
+// ============================================================
+//  1RM Lab — Service Worker
+//  Разработчик: Alex Lashkin · 2026
+// ============================================================
 
-// Файлы, которые кэшируются при установке (работают оффлайн)
-const CORE_ASSETS = [
-  './',
-  './index.html',
-  './manifest.json',
-  './icon-192.png',
-  './icon-512.png'
+// ============ ВЕРСИЯ КЭША ============
+// 👇 Меняйте эту цифру при каждом обновлении сайта (v3 → v4 → v5...)
+const CACHE_VERSION = 'v3';
+const CACHE_NAME = '1rm-lab-' + CACHE_VERSION;
+
+// ============ ФАЙЛЫ ДЛЯ КЭШИРОВАНИЯ ============
+const ASSETS = [
+    './',
+    './index.html',
+    './manifest.json'
+    // './icon-192.png',   // раскомментируйте, если есть иконки
+    // './icon-512.png'
 ];
 
-// Установка — кэшируем базовые файлы
-self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(CORE_ASSETS))
-      .then(() => self.skipWaiting())
-      .catch(err => console.log('SW install error:', err))
-  );
+// ============ УСТАНОВКА ============
+self.addEventListener('install', (event) => {
+    event.waitUntil(
+        caches.open(CACHE_NAME)
+            .then((cache) => {
+                // addAll упадёт, если хоть один файл 404 — оборачиваем в безопасный режим
+                return Promise.allSettled(
+                    ASSETS.map((asset) => cache.add(asset))
+                );
+            })
+            .then(() => self.skipWaiting()) // сразу активировать новый SW
+    );
 });
 
-// Активация — удаляем старые кэши
-self.addEventListener('activate', event => {
-  event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(
-        keys.filter(key => key !== CACHE_NAME)
-            .map(key => caches.delete(key))
-      )
-    ).then(() => self.clients.claim())
-  );
+// ============ АКТИВАЦИЯ (удаление старого кэша) ============
+self.addEventListener('activate', (event) => {
+    event.waitUntil(
+        caches.keys()
+            .then((keys) =>
+                Promise.all(
+                    keys.map((key) => {
+                        // Удаляем ВСЕ старые версии кэша
+                        if (key !== CACHE_NAME) {
+                            console.log('SW: удаляю старый кэш', key);
+                            return caches.delete(key);
+                        }
+                    })
+                )
+            )
+            .then(() => self.clients.claim()) // взять контроль над всеми вкладками
+    );
 });
 
-// Стратегия: сначала кэш, потом сеть (с докэшированием CDN)
-self.addEventListener('fetch', event => {
-  if (event.request.method !== 'GET') return;
+// ============ ОБРАБОТКА ЗАПРОСОВ ============
+self.addEventListener('fetch', (event) => {
+    const url = event.request.url;
 
-  event.respondWith(
-    caches.match(event.request).then(cached => {
-      if (cached) return cached;
+    // 🛑 Игнорируем не-http(s) запросы (chrome-extension://, data:, blob: и т.д.)
+    if (!url.startsWith('http')) return;
 
-      return fetch(event.request).then(response => {
-        // Кэшируем успешные ответы (в т.ч. CDN-библиотеки)
-        if (response && response.status === 200) {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then(cache => {
-            cache.put(event.request, clone);
-          });
-        }
-        return response;
-      }).catch(() => {
-        // Если оффлайн и нет в кэше — отдаём главную страницу
-        if (event.request.mode === 'navigate') {
-          return caches.match('./index.html');
-        }
-      });
-    })
-  );
+    // 🛑 Игнорируем расширения браузера
+    if (url.startsWith('chrome-extension://')) return;
+
+    // 🛑 Кэшируем только GET-запросы
+    if (event.request.method !== 'GET') return;
+
+    event.respondWith(
+        caches.match(event.request).then((cached) => {
+            // Если есть в кэше — отдаём сразу
+            if (cached) return cached;
+
+            // Иначе идём в сеть
+            return fetch(event.request)
+                .then((response) => {
+                    // Кэшируем только успешные ответы
+                    if (
+                        response &&
+                        response.status === 200 &&
+                        response.type === 'basic' // только свой домен (не CDN)
+                    ) {
+                        const clone = response.clone();
+                        caches.open(CACHE_NAME).then((cache) => {
+                            // Ещё раз проверяем схему перед put (защита от chrome-extension)
+                            if (event.request.url.startsWith('http')) {
+                                cache.put(event.request, clone);
+                            }
+                        });
+                    }
+                    return response;
+                })
+                .catch(() => {
+                    // Офлайн-фолбэк: если запрос страницы — отдаём главную
+                    if (event.request.mode === 'navigate') {
+                        return caches.match('./index.html');
+                    }
+                });
+        })
+    );
 });
+
+// ============ УВЕДОМЛЕНИЕ О ГОТОВНОСТИ ============
+console.log('SW: 1RM Lab ' + CACHE_VERSION + ' готов ✅');
