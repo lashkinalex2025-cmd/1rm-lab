@@ -1,5 +1,5 @@
 // ===== 1RM Lab — Service Worker =====
-const CACHE_NAME = '1rm-lab-v1';
+const CACHE_NAME = '1rm-lab-v2';
 
 // Файлы, которые кэшируются при установке (работают оффлайн)
 const CORE_ASSETS = [
