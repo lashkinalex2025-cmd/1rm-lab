@@ -33,28 +33,38 @@ self.addEventListener('activate', event => {
 });
 
 // Стратегия: сначала кэш, потом сеть (с докэшированием CDN)
-self.addEventListener('fetch', event => {
-  if (event.request.method !== 'GET') return;
+self.addEventListener('fetch', (event) => {
+    const req = event.request;
 
-  event.respondWith(
-    caches.match(event.request).then(cached => {
-      if (cached) return cached;
+    // ✅ Кешируем ТОЛЬКО http/https и GET-запросы
+    if (!req.url.startsWith('http')) return;
+    if (req.method !== 'GET') return;
 
-      return fetch(event.request).then(response => {
-        // Кэшируем успешные ответы (в т.ч. CDN-библиотеки)
-        if (response && response.status === 200) {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then(cache => {
-            cache.put(event.request, clone);
-          });
-        }
-        return response;
-      }).catch(() => {
-        // Если оффлайн и нет в кэше — отдаём главную страницу
-        if (event.request.mode === 'navigate') {
-          return caches.match('./index.html');
-        }
-      });
-    })
-  );
+    event.respondWith(
+        caches.match(req).then((cached) => {
+            // Есть в кеше → отдаём
+            if (cached) return cached;
+
+            // Иначе — грузим из сети и кешируем
+            return fetch(req).then((res) => {
+                // Не кешируем «плохие» ответы
+                if (!res || res.status !== 200 || res.type === 'opaque') {
+                    return res;
+                }
+
+                const resClone = res.clone();
+                caches.open(CACHE_NAME).then((cache) => {
+                    // ⚠️ Двойная защита: только http/https
+                    if (req.url.startsWith('http')) {
+                        cache.put(req, resClone);
+                    }
+                });
+
+                return res;
+            }).catch(() => {
+                // Офлайн-фолбэк (если нужно)
+                return caches.match('./index.html');
+            });
+        })
+    );
 });
