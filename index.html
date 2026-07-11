@@ -2,355 +2,680 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <meta name="description" content="1RM Lab — калькулятор одноповторного максимума с историей и экспортом в PDF">
-    <meta name="theme-color" content="#0a0a0a">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>1RM Lab — Калькулятор одноповторного максимума</title>
+    <meta name="description" content="PWA-калькулятор 1ПМ с историей, графиком прогресса и разминочным калькулятором">
+    <meta name="theme-color" content="#09090b">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+    <link rel="apple-touch-icon" href="icon-512.png">
 
-    <title>1RM Lab — Калькулятор 1ПМ</title>
-
-    <!-- PWA: манифест -->
-    <link rel="manifest" href="./manifest.json">
-    <link rel="apple-touch-icon" href="./icon-192.png">
-
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 
-    <!-- Font Awesome (иконки) -->
-    <link rel="stylesheet"
-          href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-
-    <!-- ✅ jsPDF (ОБЯЗАТЕЛЬНО для экспорта PDF) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-
-    <!-- Шрифт Inter -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
-          rel="stylesheet">
-
-    <!-- Кастомные стили -->
     <style>
-        * {
-            font-family: 'Inter', system-ui, sans-serif;
-            -webkit-tap-highlight-color: transparent;
-        }
-
-        body {
-            background:
-                radial-gradient(ellipse at top, rgba(34, 197, 94, 0.08), transparent 50%),
-                #0a0a0a;
-            min-height: 100vh;
-        }
-
-        /* Скрытие стрелок у number-инпутов */
-        input[type=number]::-webkit-inner-spin-button,
-        input[type=number]::-webkit-outer-spin-button {
-            -webkit-appearance: none;
-            margin: 0;
-        }
-        input[type=number] { -moz-appearance: textfield; }
-
-        /* Кастомный скроллбар */
-        ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-track { background: #18181b; }
-        ::-webkit-scrollbar-thumb {
-            background: #3f3f46;
-            border-radius: 4px;
-        }
-        ::-webkit-scrollbar-thumb:hover { background: #52525b; }
-
-        /* Анимация появления */
-        @keyframes fadeInUp {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        .fade-in-up { animation: fadeInUp 0.5s ease forwards; }
-
-        /* Свечение результата */
-        .result-glow {
-            text-shadow: 0 0 30px rgba(34, 197, 94, 0.5);
-        }
-
-        /* Плавные переходы */
-        input, select, button { transition: all 0.2s ease; }
+        * { -webkit-tap-highlight-color: transparent; }
+        body { background: #09090b; color: #fafafa; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; overscroll-behavior-y: contain; }
+        input[type="range"] { -webkit-appearance: none; appearance: none; height: 6px; border-radius: 999px; background: #27272a; outline: none; }
+        input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 22px; height: 22px; border-radius: 50%; background: #22c55e; cursor: pointer; border: 3px solid #09090b; box-shadow: 0 0 10px rgba(34,197,94,0.4); }
+        .glow-green { box-shadow: 0 0 40px rgba(34,197,94,0.15), 0 0 80px rgba(34,197,94,0.05); }
+        @keyframes toastIn { from { opacity: 0; transform: translateX(-50%) translateY(20px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-in { animation: fadeInUp 0.35s ease both; }
     </style>
 </head>
-
-    <body class="text-zinc-100 antialiased">
+<body class="min-h-screen pb-6">
 
     <!-- ============ ШАПКА ============ -->
-    <header class="border-b border-zinc-800/60 sticky top-0 z-40 bg-[#0a0a0a]/80 backdrop-blur-lg">
-        <div class="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-600
-                            flex items-center justify-center shadow-lg shadow-emerald-500/20">
-                    <i class="fa-solid fa-dumbbell text-black text-lg"></i>
+    <header class="sticky top-0 z-40 bg-zinc-950/80 backdrop-blur-xl border-b border-zinc-800/50">
+        <div class="max-w-lg mx-auto flex items-center justify-between px-4 py-3">
+            <div class="flex items-center gap-x-2.5">
+                <div class="w-9 h-9 bg-emerald-500 rounded-xl flex items-center justify-center">
+                    <i class="fa-solid fa-dumbbell text-white text-sm"></i>
                 </div>
                 <div>
-                    <h1 class="text-lg font-extrabold leading-none">1RM Lab</h1>
-                    <p class="text-[11px] text-zinc-500 mt-0.5">Калькулятор 1ПМ</p>
+                    <h1 class="text-base font-bold leading-tight">1RM Lab</h1>
+                    <p class="text-[10px] text-zinc-500 leading-tight">Калькулятор силы</p>
                 </div>
             </div>
-
-            <!-- Кнопка "О формулах" -->
-            <button id="info-btn"
-                    class="w-9 h-9 rounded-lg bg-zinc-800/60 border border-zinc-700/50
-                           flex items-center justify-center text-zinc-400
-                           hover:text-emerald-400 hover:border-emerald-500/40">
-                <i class="fa-solid fa-circle-question"></i>
+            <button onclick="resetAll()" class="w-9 h-9 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400 hover:text-white hover:border-zinc-600 transition-all active:scale-90">
+                <i class="fa-solid fa-arrow-rotate-left text-xs"></i>
             </button>
         </div>
     </header>
 
-    <!-- ============ ОСНОВНОЙ КОНТЕНТ ============ -->
-    <main class="max-w-2xl mx-auto px-4 pb-28 pt-6">
+    <main class="max-w-lg mx-auto px-4 pt-5">
 
-        <!-- ==== КАРТОЧКА РАСЧЁТА ==== -->
-        <section class="fade-in-up bg-zinc-900/60 border border-zinc-800/60 rounded-2xl p-5 sm:p-6 mb-6">
+        <!-- ============ ВКЛАДКИ ============ -->
+        <div class="flex gap-2 mb-5 overflow-x-auto pb-1 scrollbar-hide">
+            <button id="tab-btn-0" onclick="switchTab(0)" class="flex-shrink-0 px-4 py-2 rounded-xl border text-xs font-semibold transition-all border-emerald-500 bg-emerald-500/10 text-emerald-400">
+                <i class="fa-solid fa-calculator mr-1.5"></i>1ПМ
+            </button>
+            <button id="tab-btn-1" onclick="switchTab(1)" class="flex-shrink-0 px-4 py-2 rounded-xl border text-xs font-semibold transition-all border-zinc-700 text-zinc-300">
+                <i class="fa-solid fa-table-list mr-1.5"></i>Веса
+            </button>
+            <button id="tab-btn-2" onclick="switchTab(2)" class="flex-shrink-0 px-4 py-2 rounded-xl border text-xs font-semibold transition-all border-zinc-700 text-zinc-300">
+                <i class="fa-solid fa-fire mr-1.5"></i>Разминка
+            </button>
+            <button id="tab-btn-3" onclick="switchTab(3)" class="flex-shrink-0 px-4 py-2 rounded-xl border text-xs font-semibold transition-all border-zinc-700 text-zinc-300">
+                <i class="fa-solid fa-clock-rotate-left mr-1.5"></i>История
+            </button>
+            <button id="tab-btn-4" onclick="switchTab(4)" class="flex-shrink-0 px-4 py-2 rounded-xl border text-xs font-semibold transition-all border-zinc-700 text-zinc-300">
+                <i class="fa-solid fa-chart-line mr-1.5"></i>Прогресс
+            </button>
+        </div>
 
-            <form id="calc-form" class="space-y-4">
+        <!-- ============ ВКЛАДКА 0: КАЛЬКУЛЯТОР 1ПМ ============ -->
+        <div id="tab-0">
+            <!-- Название упражнения -->
+            <div class="mb-4 animate-in">
+                <label class="text-xs text-zinc-400 mb-1.5 block font-medium">Упражнение</label>
+                <input id="exercise-name" type="text" value="Жим лёжа" placeholder="Название упражнения"
+                    class="w-full bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3.5 text-sm focus:border-emerald-500 focus:outline-none transition-colors placeholder:text-zinc-600">
+            </div>
 
-                <!-- Упражнение -->
+            <!-- Вес -->
+            <div class="mb-4 animate-in" style="animation-delay:0.05s">
+                <label class="text-xs text-zinc-400 mb-1.5 block font-medium">Рабочий вес (кг)</label>
+                <input id="weight-input" type="number" inputmode="decimal" value="100" min="1" max="500" step="0.5"
+                    oninput="calculate1RM()"
+                    class="w-full bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3.5 text-2xl font-bold text-center focus:border-emerald-500 focus:outline-none transition-colors tabular-nums">
+            </div>
+
+            <!-- Повторения -->
+            <div class="mb-4 animate-in" style="animation-delay:0.1s">
+                <div class="flex items-center justify-between mb-1.5">
+                    <label class="text-xs text-zinc-400 font-medium">Повторения</label>
+                    <span id="reps-value" class="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg tabular-nums">5</span>
+                </div>
+                <input id="reps-input" type="range" min="1" max="15" value="5"
+                    oninput="updateRepsValue(); calculate1RM()" class="w-full">
+                <div class="flex justify-between text-[10px] text-zinc-600 mt-1"><span>1</span><span>15</span></div>
+            </div>
+
+            <!-- RPE -->
+            <div class="mb-5 animate-in" style="animation-delay:0.15s">
+                <div class="flex items-center justify-between mb-1.5">
+                    <label class="text-xs text-zinc-400 font-medium">RPE (интенсивность)</label>
+                    <span id="rpe-value" class="text-xs font-bold text-orange-400 bg-orange-500/10 px-2.5 py-1 rounded-lg tabular-nums">9.5</span>
+                </div>
+                <input id="rpe-input" type="range" min="6" max="10" step="0.5" value="9.5"
+                    oninput="updateRPEValue(); calculate1RM()" class="w-full">
+                <div class="flex justify-between text-[10px] text-zinc-600 mt-1"><span>6 — легко</span><span>10 — отказ</span></div>
+            </div>
+
+            <!-- Выбор формулы -->
+            <div class="mb-5 animate-in" style="animation-delay:0.2s">
+                <label class="text-xs text-zinc-400 mb-2 block font-medium">Формула расчёта</label>
+                <div class="grid grid-cols-4 gap-2">
+                    <button data-formula="average" onclick="selectFormula('average')" class="formula-btn px-3 py-2.5 rounded-xl border text-[11px] font-semibold transition-all border-emerald-500 bg-emerald-500/10 text-emerald-400">Среднее</button>
+                    <button data-formula="epley" onclick="selectFormula('epley')" class="formula-btn px-3 py-2.5 rounded-xl border text-[11px] font-semibold transition-all border-zinc-700 text-zinc-400">Epley</button>
+                    <button data-formula="brzycki" onclick="selectFormula('brzycki')" class="formula-btn px-3 py-2.5 rounded-xl border text-[11px] font-semibold transition-all border-zinc-700 text-zinc-400">Brzycki</button>
+                    <button data-formula="lombardi" onclick="selectFormula('lombardi')" class="formula-btn px-3 py-2.5 rounded-xl border text-[11px] font-semibold transition-all border-zinc-700 text-zinc-400">Lombardi</button>
+                </div>
+            </div>
+            <!-- Результат 1ПМ -->
+            <div class="bg-gradient-to-br from-emerald-500/15 to-emerald-600/5 border border-emerald-500/30 rounded-3xl p-6 mb-4 glow-green animate-in" style="animation-delay:0.25s">
+                <p class="text-xs text-emerald-400/80 text-center mb-1 font-medium uppercase tracking-wider">Ваш одноповторный максимум</p>
+                <div class="text-center">
+                    <span id="result-1rm" class="text-6xl font-black text-emerald-400 tabular-nums">120</span>
+                    <span class="text-2xl font-bold text-emerald-400/60 ml-1">кг</span>
+                </div>
+                <p id="result-formula" class="text-center text-[11px] text-zinc-500 mt-2">по формуле среднего значения</p>
+            </div>
+
+            <!-- Проценты от 1ПМ (быстрый обзор) -->
+            <div class="grid grid-cols-3 gap-2 mb-4 animate-in" style="animation-delay:0.3s">
+                <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-3 text-center">
+                    <p class="text-[10px] text-zinc-500 mb-0.5">90%</p>
+                    <p id="pct-90" class="text-lg font-bold tabular-nums">108</p>
+                    <p class="text-[9px] text-zinc-600">3-4 повт.</p>
+                </div>
+                <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-3 text-center">
+                    <p class="text-[10px] text-zinc-500 mb-0.5">80%</p>
+                    <p id="pct-80" class="text-lg font-bold tabular-nums">96</p>
+                    <p class="text-[9px] text-zinc-600">7-8 повт.</p>
+                </div>
+                <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-3 text-center">
+                    <p class="text-[10px] text-zinc-500 mb-0.5">70%</p>
+                    <p id="pct-70" class="text-lg font-bold tabular-nums">84</p>
+                    <p class="text-[9px] text-zinc-600">11-12 повт.</p>
+                </div>
+            </div>
+
+            <!-- Все формулы (сравнение) -->
+            <div class="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden mb-4 animate-in" style="animation-delay:0.35s">
+                <div class="px-4 py-3 border-b border-zinc-800 flex items-center gap-x-2">
+                    <i class="fa-solid fa-scale-balanced text-zinc-500 text-xs"></i>
+                    <span class="text-xs font-semibold text-zinc-400">Сравнение формул</span>
+                </div>
+                <div id="all-formulas" class="divide-y divide-zinc-800/60"></div>
+            </div>
+
+            <!-- Кнопка сохранить -->
+            <button onclick="saveToHistory()" class="w-full bg-emerald-500 hover:bg-emerald-600 active:scale-[0.98] text-white font-bold py-4 rounded-2xl transition-all flex items-center justify-center gap-x-2 animate-in" style="animation-delay:0.4s">
+                <i class="fa-solid fa-floppy-disk"></i>
+                Сохранить в историю
+            </button>
+        </div>
+
+        <!-- ============ ВКЛАДКА 1: РАБОЧИЕ ВЕСА ============ -->
+        <div id="tab-1" class="hidden">
+            <div class="mb-4 animate-in">
+                <label class="text-xs text-zinc-400 mb-1.5 block font-medium">Ваш 1ПМ (кг)</label>
+                <input id="working-1rm" type="number" inputmode="decimal" value="120" min="1" max="500" step="0.5"
+                    oninput="updateWorkingWeights()"
+                    class="w-full bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3.5 text-2xl font-bold text-center focus:border-emerald-500 focus:outline-none transition-colors tabular-nums">
+            </div>
+
+            <div class="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden animate-in" style="animation-delay:0.05s">
+                <div class="grid grid-cols-3 gap-2 px-5 py-3 border-b border-zinc-800 bg-zinc-950/50">
+                    <span class="text-[11px] font-bold text-zinc-500 uppercase tracking-wider">%</span>
+                    <span class="text-[11px] font-bold text-zinc-500 uppercase tracking-wider text-center">Вес</span>
+                    <span class="text-[11px] font-bold text-zinc-500 uppercase tracking-wider text-right">Повторы</span>
+                </div>
+                <div id="working-weights-list"></div>
+            </div>
+        </div>
+
+        <!-- ============ ВКЛАДКА 2: РАЗМИНКА ============ -->
+        <div id="tab-2" class="hidden">
+            <div class="grid grid-cols-2 gap-3 mb-4 animate-in">
                 <div>
-                    <label for="exercise" class="block text-xs font-medium text-zinc-400 mb-1.5">
-                        <i class="fa-solid fa-list-check mr-1 text-emerald-500"></i> Упражнение
-                    </label>
-                    <input type="text" id="exercise" placeholder="Например: Жим лёжа"
-                           class="w-full bg-zinc-800/60 border border-zinc-700/50 rounded-xl
-                                  px-4 py-3 text-sm placeholder-zinc-600
-                                  focus:outline-none focus:border-emerald-500/60
-                                  focus:ring-2 focus:ring-emerald-500/20">
+                    <label class="text-xs text-zinc-400 mb-1.5 block font-medium">Рабочий вес (кг)</label>
+                    <input id="warmup-target" type="number" inputmode="decimal" value="100" min="1" max="500" step="0.5"
+                        oninput="calculateWarmup()"
+                        class="w-full bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3.5 text-lg font-bold text-center focus:border-emerald-500 focus:outline-none transition-colors tabular-nums">
                 </div>
-
-                <!-- Вес и Повторения -->
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label for="weight" class="block text-xs font-medium text-zinc-400 mb-1.5">
-                            <i class="fa-solid fa-weight-hanging mr-1 text-emerald-500"></i> Вес (кг)
-                        </label>
-                        <input type="number" id="weight" placeholder="100" min="1" step="0.5"
-                               class="w-full bg-zinc-800/60 border border-zinc-700/50 rounded-xl
-                                      px-4 py-3 text-sm placeholder-zinc-600
-                                      focus:outline-none focus:border-emerald-500/60
-                                      focus:ring-2 focus:ring-emerald-500/20">
-                    </div>
-                    <div>
-                        <label for="reps" class="block text-xs font-medium text-zinc-400 mb-1.5">
-                            <i class="fa-solid fa-repeat mr-1 text-emerald-500"></i> Повторения
-                        </label>
-                        <input type="number" id="reps" placeholder="5" min="1" max="30"
-                               class="w-full bg-zinc-800/60 border border-zinc-700/50 rounded-xl
-                                      px-4 py-3 text-sm placeholder-zinc-600
-                                      focus:outline-none focus:border-emerald-500/60
-                                      focus:ring-2 focus:ring-emerald-500/20">
-                    </div>
-                </div>
-
-                <!-- RPE и Формула -->
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label for="rpe" class="block text-xs font-medium text-zinc-400 mb-1.5">
-                            <i class="fa-solid fa-gauge-high mr-1 text-emerald-500"></i> RPE
-                        </label>
-                        <select id="rpe"
-                                class="w-full bg-zinc-800/60 border border-zinc-700/50 rounded-xl
-                                       px-4 py-3 text-sm cursor-pointer
-                                       focus:outline-none focus:border-emerald-500/60
-                                       focus:ring-2 focus:ring-emerald-500/20">
-                            <option value="10">10 — до отказа</option>
-                            <option value="9.5">9.5</option>
-                            <option value="9">9 — 1 в запасе</option>
-                            <option value="8.5">8.5</option>
-                            <option value="8">8 — 2 в запасе</option>
-                            <option value="7.5">7.5</option>
-                            <option value="7">7 — 3 в запасе</option>
-                            <option value="6">6 — легко</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label for="formula" class="block text-xs font-medium text-zinc-400 mb-1.5">
-                            <i class="fa-solid fa-flask mr-1 text-emerald-500"></i> Формула
-                        </label>
-                        <select id="formula"
-                                class="w-full bg-zinc-800/60 border border-zinc-700/50 rounded-xl
-                                       px-4 py-3 text-sm cursor-pointer
-                                       focus:outline-none focus:border-emerald-500/60
-                                       focus:ring-2 focus:ring-emerald-500/20">
-                            <option value="epley">Epley</option>
-                            <option value="brzycki">Brzycki</option>
-                            <option value="lombardi">Lombardi</option>
-                            <option value="oconner">O'Conner</option>
-                        </select>
-                    </div>
-                </div>
-
-                <!-- Кнопка расчёта -->
-                <button type="submit" id="calc-btn"
-                        class="w-full bg-gradient-to-r from-emerald-500 to-emerald-600
-                               hover:from-emerald-400 hover:to-emerald-500
-                               text-black font-bold py-3.5 rounded-xl
-                               shadow-lg shadow-emerald-500/20
-                               active:scale-[0.98] flex items-center justify-center gap-2">
-                    <i class="fa-solid fa-calculator"></i>
-                    Рассчитать 1ПМ
-                </button>
-
-            </form>
-        </section>
-
-        <!-- ==== БЛОК РЕЗУЛЬТАТА (скрыт по умолчанию) ==== -->
-        <section id="result-card"
-                 class="hidden fade-in-up bg-gradient-to-br from-emerald-500/10 to-transparent
-                        border border-emerald-500/30 rounded-2xl p-6 mb-6 text-center">
-
-            <p class="text-xs font-medium text-emerald-400 uppercase tracking-wider mb-2">
-                Ваш одноповторный максимум
-            </p>
-
-            <div class="flex items-baseline justify-center gap-2 mb-1">
-                <span id="result-value" class="text-6xl font-extrabold text-white result-glow">0</span>
-                <span class="text-2xl font-bold text-emerald-400">кг</span>
-            </div>
-
-            <p id="result-formula" class="text-xs text-zinc-500 mb-5">по формуле Epley</p>
-
-            <!-- Проценты от 1ПМ -->
-            <div class="border-t border-zinc-800/60 pt-4">
-                <p class="text-xs font-medium text-zinc-400 mb-3">
-                    <i class="fa-solid fa-percent mr-1 text-emerald-500"></i> Рабочие веса
-                </p>
-                <div id="percentages" class="grid grid-cols-4 gap-2 text-center">
-                    <!-- Заполняется через JS -->
+                <div>
+                    <label class="text-xs text-zinc-400 mb-1.5 block font-medium">Вес грифа (кг)</label>
+                    <input id="warmup-bar" type="number" inputmode="decimal" value="20" min="1" max="50" step="0.5"
+                        oninput="calculateWarmup()"
+                        class="w-full bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3.5 text-lg font-bold text-center focus:border-emerald-500 focus:outline-none transition-colors tabular-nums">
                 </div>
             </div>
-        </section>
 
-        <!-- ==== ИСТОРИЯ ТРЕНИРОВОК ==== -->
-        <section class="fade-in-up">
+            <div class="flex items-center gap-x-2 mb-3">
+                <i class="fa-solid fa-fire text-orange-400 text-xs"></i>
+                <span class="text-xs font-semibold text-zinc-400">Разминочные подходы</span>
+            </div>
+            <div id="warmup-list" class="space-y-2.5"></div>
+        </div>
+
+        <!-- ============ ВКЛАДКА 3: ИСТОРИЯ ============ -->
+        <div id="tab-3" class="hidden">
             <div class="flex items-center justify-between mb-4">
-                <h2 class="text-sm font-bold text-zinc-300 flex items-center gap-2">
-                    <i class="fa-solid fa-clock-rotate-left text-emerald-500"></i>
-                    История
-                    <span id="history-count"
-                          class="text-xs bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded-full">0</span>
-                </h2>
-
-                <div class="flex items-center gap-2">
-                    <!-- Экспорт PDF -->
-                    <button id="export-btn"
-                            class="text-xs bg-zinc-800/60 border border-zinc-700/50 rounded-lg
-                                   px-3 py-1.5 text-zinc-400 hover:text-emerald-400
-                                   hover:border-emerald-500/40 flex items-center gap-1.5">
-                        <i class="fa-solid fa-file-pdf"></i> PDF
+                <div class="flex items-center gap-x-2">
+                    <i class="fa-solid fa-clock-rotate-left text-zinc-500 text-xs"></i>
+                    <span class="text-xs font-semibold text-zinc-400">Сохранённые расчёты</span>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="exportPDF()" class="text-[11px] font-semibold text-zinc-400 hover:text-white bg-zinc-900 border border-zinc-800 px-3 py-1.5 rounded-lg transition-colors">
+                        <i class="fa-solid fa-file-pdf mr-1"></i>PDF
                     </button>
-                    <!-- Очистить -->
-                    <button id="clear-btn"
-                            class="text-xs bg-zinc-800/60 border border-zinc-700/50 rounded-lg
-                                   px-3 py-1.5 text-zinc-400 hover:text-red-400
-                                   hover:border-red-500/40 flex items-center gap-1.5">
-                        <i class="fa-solid fa-trash"></i> Очистить
+                    <button onclick="clearHistory()" class="text-[11px] font-semibold text-red-400 hover:text-red-300 bg-red-500/10 border border-red-500/20 px-3 py-1.5 rounded-lg transition-colors">
+                        <i class="fa-solid fa-trash mr-1"></i>Очистить
                     </button>
                 </div>
             </div>
+            <div id="history-list" class="space-y-3"></div>
+        </div>
 
-            <!-- Список записей -->
-            <div id="history-list" class="space-y-2">
-                <!-- Заполняется через JS -->
+        <!-- ============ ВКЛАДКА 4: ПРОГРЕСС ============ -->
+        <div id="tab-4" class="hidden">
+            <div class="mb-4 animate-in">
+                <label class="text-xs text-zinc-400 mb-1.5 block font-medium">Упражнение для графика</label>
+                <select id="progress-exercise" onchange="renderChart()"
+                    class="w-full bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3.5 text-sm focus:border-emerald-500 focus:outline-none transition-colors appearance-none">
+                </select>
             </div>
 
-            <!-- Пустое состояние -->
-            <div id="empty-state" class="text-center py-12">
-                <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-zinc-800/40
-                            flex items-center justify-center">
-                    <i class="fa-solid fa-inbox text-2xl text-zinc-600"></i>
-                </div>
-                <p class="text-sm text-zinc-500">История пуста</p>
-                <p class="text-xs text-zinc-600 mt-1">Сделайте первый расчёт</p>
-            </div>
-        </section>
-
-    </main>
-
-    <!-- ============ МОДАЛКА "О ФОРМУЛАХ" ============ -->
-    <div id="info-modal"
-         class="hidden fixed inset-0 z-50 flex items-end sm:items-center justify-center
-                bg-black/70 backdrop-blur-sm p-4">
-        <div class="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md
-                    max-h-[80vh] overflow-y-auto fade-in-up">
-
-            <!-- Заголовок модалки -->
-            <div class="sticky top-0 bg-zinc-900 border-b border-zinc-800 px-5 py-4
-                        flex items-center justify-between">
-                <h3 class="font-bold flex items-center gap-2">
-                    <i class="fa-solid fa-flask text-emerald-500"></i> О формулах
-                </h3>
-                <button id="close-modal"
-                        class="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center
-                               text-zinc-400 hover:text-white">
-                    <i class="fa-solid fa-xmark"></i>
-                </button>
+            <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 mb-4 animate-in" style="animation-delay:0.05s">
+                <canvas id="progress-chart" height="220"></canvas>
+                <p id="chart-empty" class="text-center text-xs text-zinc-600 py-12 hidden">
+                    <i class="fa-solid fa-chart-line text-2xl mb-2 block opacity-40"></i>
+                    Нет данных. Сохраните расчёты в истории.
+                </p>
             </div>
 
-            <!-- Содержимое -->
-            <div class="p-5 space-y-4 text-sm">
-                <div>
-                    <p class="font-semibold text-emerald-400 mb-1">Epley</p>
-                    <p class="text-zinc-400 text-xs">1ПМ = вес × (1 + повторы / 30)</p>
-                    <p class="text-zinc-500 text-xs mt-1">Универсальная, точна для 1–10 повторов.</p>
+            <!-- Статистика прогресса -->
+            <div class="grid grid-cols-3 gap-2 animate-in" style="animation-delay:0.1s">
+                <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-3 text-center">
+                    <p class="text-[10px] text-zinc-500 mb-0.5">Записей</p>
+                    <p id="stat-count" class="text-lg font-bold text-emerald-400 tabular-nums">0</p>
                 </div>
-                <div>
-                    <p class="font-semibold text-emerald-400 mb-1">Brzycki</p>
-                    <p class="text-zinc-400 text-xs">1ПМ = вес × 36 / (37 − повторы)</p>
-                    <p class="text-zinc-500 text-xs mt-1">Точна для малого числа повторов.</p>
+                <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-3 text-center">
+                    <p class="text-[10px] text-zinc-500 mb-0.5">Максимум</p>
+                    <p id="stat-max" class="text-lg font-bold text-emerald-400 tabular-nums">0</p>
                 </div>
-                <div>
-                    <p class="font-semibold text-emerald-400 mb-1">Lombardi</p>
-                    <p class="text-zinc-400 text-xs">1ПМ = вес × повторы^0.10</p>
-                    <p class="text-zinc-500 text-xs mt-1">Хороша для большого числа повторов.</p>
-                </div>
-                <div>
-                    <p class="font-semibold text-emerald-400 mb-1">O'Conner</p>
-                    <p class="text-zinc-400 text-xs">1ПМ = вес × (1 + повторы / 40)</p>
-                    <p class="text-zinc-500 text-xs mt-1">Даёт более консервативные оценки.</p>
-                </div>
-
-                <div class="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3">
-                    <p class="text-xs text-emerald-300">
-                        <i class="fa-solid fa-lightbulb mr-1"></i>
-                        Учёт RPE корректирует результат: чем ниже RPE, тем выше расчётный 1ПМ.
-                    </p>
+                <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-3 text-center">
+                    <p class="text-[10px] text-zinc-500 mb-0.5">Прирост</p>
+                    <p id="stat-growth" class="text-lg font-bold text-emerald-400 tabular-nums">+0</p>
                 </div>
             </div>
         </div>
-    </div>
+
+    </main>
+
+    <!-- ============ ФУТЕР РАЗРАБОТЧИКА ============ -->
+    <footer class="max-w-lg mx-auto px-4 mt-8 mb-4">
+        <div class="border-t border-zinc-800/60 pt-4 text-center">
+            <p class="text-[11px] text-zinc-500 flex items-center justify-center gap-x-1.5">
+                <i class="fa-solid fa-code text-emerald-500/70 text-[10px]"></i>
+                Разработчик:
+                <span class="font-semibold text-zinc-300">Alex Lashkin</span>
+            </p>
+            <p class="text-[10px] text-zinc-600 mt-1">
+                © 2026 · 1RM Lab · Все права защищены
+            </p>
+        </div>
+    </footer>
 
     <!-- ============ TOAST-УВЕДОМЛЕНИЕ ============ -->
-    <div id="toast"
-         class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-50
-                bg-zinc-800 border border-zinc-700 text-white text-sm
-                px-4 py-3 rounded-xl shadow-xl flex items-center gap-2">
+    <div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-zinc-800 border border-zinc-700 text-white text-sm font-medium px-5 py-3 rounded-2xl shadow-2xl hidden items-center gap-x-2 z-50" style="animation: toastIn 0.3s ease;">
         <i id="toast-icon" class="fa-solid fa-check text-emerald-400"></i>
-        <span id="toast-msg">Готово</span>
+        <span id="toast-msg">Сохранено!</span>
     </div>
 
-            <!-- ============ РЕГИСТРАЦИЯ SERVICE WORKER (PWA) ============ -->
     <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./sw.js')
-                    .then(reg => {
-                        console.log('✅ Service Worker зарегистрирован:', reg.scope);
-                    })
-                    .catch(err => {
-                        console.warn('⚠️ Ошибка регистрации SW:', err);
-                    });
-            });
+    // ============ КОНСТАНТЫ И СОСТОЯНИЕ ============
+    let currentFormula = 'average';
+    let progressChart = null;
+    const RPE_TABLE = {
+        10:  { 1:1.0, 2:0.955, 3:0.922, 4:0.892, 5:0.863, 6:0.837, 7:0.811, 8:0.786, 9:0.762, 10:0.739, 11:0.717, 12:0.696, 13:0.676, 14:0.657, 15:0.638 },
+        9.5: { 1:0.978, 2:0.939, 3:0.907, 4:0.878, 5:0.850, 6:0.824, 7:0.799, 8:0.774, 9:0.751, 10:0.728, 11:0.707, 12:0.686, 13:0.666, 14:0.647, 15:0.629 },
+        9:   { 1:0.955, 2:0.922, 3:0.892, 4:0.863, 5:0.837, 6:0.811, 7:0.786, 8:0.762, 9:0.739, 10:0.717, 11:0.696, 12:0.676, 13:0.657, 14:0.638, 15:0.620 },
+        8.5: { 1:0.939, 2:0.907, 3:0.878, 4:0.850, 5:0.824, 6:0.799, 7:0.774, 8:0.751, 9:0.728, 10:0.707, 11:0.686, 12:0.666, 13:0.647, 14:0.629, 15:0.611 },
+        8:   { 1:0.922, 2:0.892, 3:0.863, 4:0.837, 5:0.811, 6:0.786, 7:0.762, 8:0.739, 9:0.717, 10:0.696, 11:0.676, 12:0.657, 13:0.638, 14:0.620, 15:0.603 },
+        7.5: { 1:0.907, 2:0.878, 3:0.850, 4:0.824, 5:0.799, 6:0.774, 7:0.751, 8:0.728, 9:0.707, 10:0.686, 11:0.666, 12:0.647, 13:0.629, 14:0.611, 15:0.594 },
+        7:   { 1:0.892, 2:0.863, 3:0.837, 4:0.811, 5:0.786, 6:0.762, 7:0.739, 8:0.717, 9:0.696, 10:0.676, 11:0.657, 12:0.638, 13:0.620, 14:0.603, 15:0.586 },
+        6.5: { 1:0.878, 2:0.850, 3:0.824, 4:0.799, 5:0.774, 6:0.751, 7:0.728, 8:0.707, 9:0.686, 10:0.666, 11:0.647, 12:0.629, 13:0.611, 14:0.594, 15:0.578 },
+        6:   { 1:0.863, 2:0.837, 3:0.811, 4:0.786, 5:0.762, 6:0.739, 7:0.717, 8:0.696, 9:0.676, 10:0.657, 11:0.638, 12:0.620, 13:0.603, 14:0.586, 15:0.570 }
+    };
+
+    // ============ ФОРМУЛЫ РАСЧЁТА 1ПМ ============
+    function epley(w, r)    { return r === 1 ? w : w * (1 + r / 30); }
+    function brzycki(w, r)  { return r === 1 ? w : w * (36 / (37 - r)); }
+    function lombardi(w, r) { return w * Math.pow(r, 0.10); }
+
+    function calcByFormula(formula, w, r) {
+        switch (formula) {
+            case 'epley':    return epley(w, r);
+            case 'brzycki':  return brzycki(w, r);
+            case 'lombardi': return lombardi(w, r);
+            case 'average':  return (epley(w, r) + brzycki(w, r) + lombardi(w, r)) / 3;
         }
+    }
+
+    const FORMULA_NAMES = {
+        average:  'по среднему значению',
+        epley:    'по формуле Epley',
+        brzycki:  'по формуле Brzycki',
+        lombardi: 'по формуле Lombardi'
+    };
+
+    // ============ ГЛАВНЫЙ РАСЧЁТ ============
+    function calculate1RM() {
+        const w = parseFloat(document.getElementById('weight-input').value) || 0;
+        const r = parseInt(document.getElementById('reps-input').value) || 1;
+        const rpe = parseFloat(document.getElementById('rpe-input').value) || 10;
+
+        let base1RM = calcByFormula(currentFormula, w, r);
+        const rpeCoef = (RPE_TABLE[rpe] && RPE_TABLE[rpe][r]) ? RPE_TABLE[rpe][r] : null;
+        let rpe1RM = rpeCoef ? w / rpeCoef : base1RM;
+        const final1RM = (base1RM + rpe1RM) / 2;
+
+        document.getElementById('result-1rm').textContent = Math.round(final1RM);
+        document.getElementById('result-formula').textContent = FORMULA_NAMES[currentFormula] + ' + RPE';
+
+        document.getElementById('pct-90').textContent = Math.round(final1RM * 0.9);
+        document.getElementById('pct-80').textContent = Math.round(final1RM * 0.8);
+        document.getElementById('pct-70').textContent = Math.round(final1RM * 0.7);
+
+        renderAllFormulas(w, r);
+
+        document.getElementById('working-1rm').value = Math.round(final1RM);
+        document.getElementById('warmup-target').value = w;
+        return final1RM;
+    }
+
+    function renderAllFormulas(w, r) {
+        const formulas = [
+            { key: 'epley',    name: 'Epley' },
+            { key: 'brzycki',  name: 'Brzycki' },
+            { key: 'lombardi', name: 'Lombardi' },
+            { key: 'average',  name: 'Среднее' }
+        ];
+        document.getElementById('all-formulas').innerHTML = formulas.map(f => {
+            const val = Math.round(calcByFormula(f.key, w, r));
+            const active = f.key === currentFormula;
+            return `<div class="flex items-center justify-between px-4 py-3 ${active ? 'bg-emerald-500/5' : ''}">
+                <span class="text-sm ${active ? 'text-emerald-400 font-semibold' : 'text-zinc-400'}">${f.name}</span>
+                <span class="text-sm font-bold tabular-nums ${active ? 'text-emerald-400' : 'text-zinc-300'}">${val} кг</span>
+            </div>`;
+        }).join('');
+    }
+
+    // ============ ОБНОВЛЕНИЕ ЗНАЧЕНИЙ СЛАЙДЕРОВ ============
+    function updateRepsValue() { document.getElementById('reps-value').textContent = document.getElementById('reps-input').value; }
+    function updateRPEValue()  { document.getElementById('rpe-value').textContent = parseFloat(document.getElementById('rpe-input').value).toFixed(1); }
+
+    // ============ ВЫБОР ФОРМУЛЫ ============
+    function selectFormula(formula) {
+        currentFormula = formula;
+        document.querySelectorAll('.formula-btn').forEach(btn => {
+            const active = btn.dataset.formula === formula;
+            btn.className = 'formula-btn px-3 py-2.5 rounded-xl border text-[11px] font-semibold transition-all ' +
+                (active ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400' : 'border-zinc-700 text-zinc-400');
+        });
+        calculate1RM();
+    }
+
+    // ============ ПЕРЕКЛЮЧЕНИЕ ВКЛАДОК ============
+    function switchTab(index) {
+        for (let i = 0; i <= 4; i++) {
+            document.getElementById('tab-' + i).classList.add('hidden');
+            const btn = document.getElementById('tab-btn-' + i);
+            btn.className = btn.className.replace(/border-emerald-500 bg-emerald-500\/10 text-emerald-400/g, 'border-zinc-700 text-zinc-300');
+        }
+        document.getElementById('tab-' + index).classList.remove('hidden');
+        const activeBtn = document.getElementById('tab-btn-' + index);
+        activeBtn.className = activeBtn.className.replace('border-zinc-700 text-zinc-300', 'border-emerald-500 bg-emerald-500/10 text-emerald-400');
+
+        if (index === 1) updateWorkingWeights();
+        if (index === 2) calculateWarmup();
+        if (index === 3) renderHistory();
+        if (index === 4) { populateExerciseSelect(); renderChart(); }
+    }
+
+    // ============ РАБОЧИЕ ВЕСА ============
+    function updateWorkingWeights() {
+        const oneRM = parseFloat(document.getElementById('working-1rm').value) || 0;
+        const rows = [
+            { pct: 100, reps: '1' }, { pct: 95, reps: '2' }, { pct: 90, reps: '3-4' },
+            { pct: 85, reps: '5-6' }, { pct: 80, reps: '7-8' }, { pct: 75, reps: '9-10' },
+            { pct: 70, reps: '11-12' }, { pct: 65, reps: '13-15' }, { pct: 60, reps: '16-20' }
+        ];
+        document.getElementById('working-weights-list').innerHTML = rows.map(row => {
+            const weight = Math.round(oneRM * row.pct / 100 * 2) / 2;
+            const highlight = row.pct === 80;
+            return `<div class="grid grid-cols-3 gap-2 px-5 py-3.5 border-b border-zinc-800/50 ${highlight ? 'bg-emerald-500/5' : ''}">
+                <span class="text-sm font-bold ${highlight ? 'text-emerald-400' : 'text-zinc-300'} tabular-nums">${row.pct}%</span>
+                <span class="text-sm font-bold text-center tabular-nums ${highlight ? 'text-emerald-400' : ''}">${weight} кг</span>
+                <span class="text-xs text-zinc-500 text-right self-center">${row.reps}</span>
+            </div>`;
+        }).join('');
+    }
+
+    // ============ РАЗМИНОЧНЫЙ КАЛЬКУЛЯТОР ============
+    function calculateWarmup() {
+        const target = parseFloat(document.getElementById('warmup-target').value) || 0;
+        const bar = parseFloat(document.getElementById('warmup-bar').value) || 20;
+        const sets = [
+            { label: 'Пустой гриф', pct: 0,   reps: '10-15', color: 'text-zinc-400' },
+            { label: 'Подход 1',    pct: 40,  reps: '8',     color: 'text-emerald-400' },
+            { label: 'Подход 2',    pct: 55,  reps: '5',     color: 'text-emerald-400' },
+            { label: 'Подход 3',    pct: 70,  reps: '3',     color: 'text-yellow-400' },
+            { label: 'Подход 4',    pct: 85,  reps: '2',     color: 'text-orange-400' },
+            { label: 'Подход 5',    pct: 92,  reps: '1',     color: 'text-red-400' }
+        ];
+        document.getElementById('warmup-list').innerHTML = sets.map((s, i) => {
+            let weight = s.pct === 0 ? bar : Math.max(bar, Math.round(target * s.pct / 100 / 2.5) * 2.5);
+            return `<div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 flex items-center justify-between animate-in" style="animation-delay:${i*0.04}s">
+                <div class="flex items-center gap-x-3">
+                    <div class="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center text-xs font-bold ${s.color}">${i}</div>
+                    <div>
+                        <p class="text-sm font-semibold">${s.label}</p>
+                        <p class="text-[11px] text-zinc-500">${s.pct > 0 ? s.pct + '% · ' : ''}${s.reps} повт.</p>
+                    </div>
+                </div>
+                <div class="text-right">
+                    <span class="text-xl font-bold tabular-nums ${s.color}">${weight}</span>
+                    <span class="text-xs text-zinc-500 ml-0.5">кг</span>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    // ============ ИСТОРИЯ (localStorage) ============
+    function getHistory() {
+        try { return JSON.parse(localStorage.getItem('1rm_history') || '[]'); }
+        catch { return []; }
+    }
+    function setHistory(data) { localStorage.setItem('1rm_history', JSON.stringify(data)); }
+
+    function saveToHistory() {
+        const exercise = document.getElementById('exercise-name').value.trim() || 'Без названия';
+        const w = parseFloat(document.getElementById('weight-input').value) || 0;
+        const r = parseInt(document.getElementById('reps-input').value) || 1;
+        const rpe = parseFloat(document.getElementById('rpe-input').value) || 10;
+        const oneRM = Math.round(calculate1RM());
+
+        const history = getHistory();
+        history.unshift({
+            id: Date.now(),
+            exercise, weight: w, reps: r, rpe,
+            oneRM, formula: currentFormula,
+            date: new Date().toISOString()
+        });
+        setHistory(history);
+        showToast('Расчёт сохранён!', 'check', 'text-emerald-400');
+    }
+
+    function renderHistory() {
+        const history = getHistory();
+        const list = document.getElementById('history-list');
+        if (history.length === 0) {
+            list.innerHTML = `<div class="text-center py-16 text-zinc-600">
+                <i class="fa-solid fa-inbox text-3xl mb-3 block opacity-40"></i>
+                <p class="text-sm">История пуста</p>
+                <p class="text-xs mt-1 text-zinc-700">Сохраните расчёт на вкладке «1ПМ»</p>
+            </div>`;
+            return;
+        }
+        list.innerHTML = history.map((item, i) => {
+            const d = new Date(item.date);
+            const dateStr = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
+            const timeStr = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+            return `<div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 animate-in" style="animation-delay:${i*0.03}s">
+                <div class="flex items-start justify-between mb-2">
+                    <div>
+                        <p class="text-sm font-bold">${item.exercise}</p>
+                        <p class="text-[11px] text-zinc-500">${dateStr} · ${timeStr}</p>
+                    </div>
+                    <button onclick="deleteHistoryItem(${item.id})" class="w-7 h-7 rounded-lg bg-zinc-800 flex items-center justify-center text-zinc-500 hover:text-red-400 transition-colors active:scale-90">
+                        <i class="fa-solid fa-xmark text-xs"></i>
+                    </button>
+                </div>
+                <div class="flex items-center justify-between">
+                    <div class="flex gap-x-4 text-[11px] text-zinc-400">
+                        <span><i class="fa-solid fa-weight-hanging text-zinc-600 mr-1"></i>${item.weight} кг</span>
+                        <span><i class="fa-solid fa-repeat text-zinc-600 mr-1"></i>${item.reps}</span>
+                        <span><i class="fa-solid fa-gauge-high text-zinc-600 mr-1"></i>RPE ${item.rpe}</span>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-xl font-black text-emerald-400 tabular-nums">${item.oneRM}</span>
+                        <span class="text-[11px] text-emerald-400/60 ml-0.5">кг 1ПМ</span>
+                    </div>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    function deleteHistoryItem(id) {
+        setHistory(getHistory().filter(item => item.id !== id));
+        renderHistory();
+        showToast('Запись удалена', 'trash', 'text-red-400');
+    }
+
+    function clearHistory() {
+        if (getHistory().length === 0) { showToast('История уже пуста', 'circle-info', 'text-zinc-400'); return; }
+        if (confirm('Удалить всю историю расчётов? Это действие необратимо.')) {
+            localStorage.removeItem('1rm_history');
+            renderHistory();
+            showToast('История очищена', 'trash', 'text-red-400');
+        }
+    }
+
+    // ============ ГРАФИК ПРОГРЕССА ============
+    function populateExerciseSelect() {
+        const history = getHistory();
+        const exercises = [...new Set(history.map(h => h.exercise))];
+        const select = document.getElementById('progress-exercise');
+        const current = select.value;
+        select.innerHTML = exercises.length
+            ? exercises.map(e => `<option value="${e}">${e}</option>`).join('')
+            : '<option value="">Нет данных</option>';
+        if (exercises.includes(current)) select.value = current;
+    }
+
+    function renderChart() {
+        const history = getHistory();
+        const selected = document.getElementById('progress-exercise').value;
+        const filtered = history.filter(h => h.exercise === selected)
+            .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+        const canvas = document.getElementById('progress-chart');
+        const empty = document.getElementById('chart-empty');
+
+        if (filtered.length === 0) {
+            canvas.style.display = 'none';
+            empty.classList.remove('hidden');
+            document.getElementById('stat-count').textContent = '0';
+            document.getElementById('stat-max').textContent = '0';
+            document.getElementById('stat-growth').textContent = '+0';
+            if (progressChart) { progressChart.destroy(); progressChart = null; }
+            return;
+        }
+        canvas.style.display = 'block';
+        empty.classList.add('hidden');
+
+        const labels = filtered.map(h => new Date(h.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }));
+        const data = filtered.map(h => h.oneRM);
+
+        const maxVal = Math.max(...data);
+        const growth = data.length > 1 ? data[data.length - 1] - data[0] : 0;
+        document.getElementById('stat-count').textContent = filtered.length;
+        document.getElementById('stat-max').textContent = maxVal;
+        document.getElementById('stat-growth').textContent = (growth >= 0 ? '+' : '') + growth;
+
+        if (progressChart) progressChart.destroy();
+        progressChart = new Chart(canvas, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [{
+                    label: '1ПМ (кг)', data,
+                    borderColor: '#22c55e',
+                    backgroundColor: 'rgba(34,197,94,0.1)',
+                    fill: true, tension: 0.35,
+                    pointBackgroundColor: '#22c55e',
+                    pointBorderColor: '#09090b',
+                    pointBorderWidth: 2, pointRadius: 5, pointHoverRadius: 7,
+                    borderWidth: 2.5
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { grid: { color: 'rgba(63,63,70,0.3)' }, ticks: { color: '#71717a', font: { size: 11 } } },
+                    x: { grid: { display: false }, ticks: { color: '#71717a', font: { size: 11 } } }
+                }
+            }
+        });
+    }
+
+    // ============ ЭКСПОРТ В PDF ============
+    function exportPDF() {
+        const history = getHistory();
+        if (history.length === 0) { showToast('Нет данных для экспорта', 'circle-info', 'text-zinc-400'); return; }
+
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        doc.setFontSize(20); doc.setTextColor(34, 197, 94);
+        doc.text('1RM Lab - Otchet', 14, 20);
+        doc.setFontSize(10); doc.setTextColor(120);
+        doc.text('Sozdano: ' + new Date().toLocaleDateString('ru-RU'), 14, 27);
+
+        let y = 40;
+        doc.setFontSize(9); doc.setTextColor(60);
+        doc.text('Uprazhnenie', 14, y);
+        doc.text('Ves', 90, y);
+        doc.text('Povt', 115, y);
+        doc.text('RPE', 140, y);
+        doc.text('1PM', 170, y);
+        doc.setDrawColor(200); doc.line(14, y + 2, 196, y + 2);
+        y += 9;
+
+        history.forEach(item => {
+            if (y > 275) { doc.addPage(); y = 20; }
+            const d = new Date(item.date).toLocaleDateString('ru-RU');
+            doc.setTextColor(30);
+            const name = item.exercise.length > 28 ? item.exercise.slice(0, 28) + '...' : item.exercise;
+            doc.text(name + ' (' + d + ')', 14, y);
+            doc.text(String(item.weight), 90, y);
+            doc.text(String(item.reps), 115, y);
+            doc.text(String(item.rpe), 140, y);
+            doc.setTextColor(34, 197, 94);
+            doc.text(String(item.oneRM) + ' kg', 170, y);
+            y += 8;
+        });
+
+        doc.setFontSize(8); doc.setTextColor(150);
+        doc.text('Alex Lashkin - 2026 - 1RM Lab', 14, 290);
+
+        doc.save('1RM-Lab-' + Date.now() + '.pdf');
+        showToast('PDF сохранён!', 'file-pdf', 'text-emerald-400');
+    }
+
+    // ============ TOAST ============
+    let toastTimer = null;
+    function showToast(msg, icon = 'check', color = 'text-emerald-400') {
+        const toast = document.getElementById('toast');
+        document.getElementById('toast-msg').textContent = msg;
+        const iconEl = document.getElementById('toast-icon');
+        iconEl.className = 'fa-solid fa-' + icon + ' ' + color;
+        toast.classList.remove('hidden');
+        toast.classList.add('flex');
+        toast.style.animation = 'none';
+        void toast.offsetWidth;
+        toast.style.animation = 'toastIn 0.3s ease';
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => {
+            toast.classList.add('hidden');
+            toast.classList.remove('flex');
+        }, 2500);
+    }
+
+    // ============ СБРОС ============
+    function resetAll() {
+        document.getElementById('exercise-name').value = 'Жим лёжа';
+        document.getElementById('weight-input').value = 100;
+        document.getElementById('reps-input').value = 5;
+        document.getElementById('rpe-input').value = 9.5;
+        updateRepsValue(); updateRPEValue();
+        selectFormula('average');
+        showToast('Сброшено', 'arrow-rotate-left', 'text-zinc-400');
+    }
+
+    // ============ ИНИЦИАЛИЗАЦИЯ ============
+    updateRepsValue();
+    updateRPEValue();
+    calculate1RM();
+
+    // ============ РЕГИСТРАЦИЯ SERVICE WORKER ============
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('sw.js')
+                .then(() => console.log('SW: зарегистрирован ✅'))
+                .catch(err => console.log('SW: ошибка ❌', err));
+        });
+    }
     </script>
-
-    <!-- ============ ОСНОВНОЙ СКРИПТ ПРИЛОЖЕНИЯ ============ -->
-    <!-- ⚠️ Подключается ПОСЛЕДНИМ, после всей разметки и jsPDF -->
-    <script src="./app.js"></script>
-
 </body>
 </html>
