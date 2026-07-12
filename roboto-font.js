@@ -4,4 +4,5 @@ var callAddFont = function () {
 this.addFileToVFS('Roboto-Regular-normal.ttf', font);
 this.addFont('Roboto-Regular-normal.ttf', 'Roboto-Regular', 'normal');
 };
-jsPDF.API.events.push(['addFonts', callAddFont]);
+//jsPDF.API.events.push(['addFonts', callAddFont]);
+})(window.jspdf.jsPDF.API);       // ✅ для UMD 2.5.1
