@@ -201,14 +201,14 @@ function exportPDF() {
         // ✅ Пытаемся включить кириллический шрифт Roboto.
         //    Если roboto-font.js не подключён — работаем на Helvetica
         //    и транслитерируем текст (fallback), чтобы не было кракозябр.
-       let useCyrillic = false;
+      let useCyrillic = false;
 try {
     const fonts = doc.getFontList();
-    if (fonts && fonts['Roboto-Regular']) {              // ✅ правильное имя
-        doc.setFont('Roboto-Regular', 'normal');         // ✅ правильное имя
+    if (fonts && fonts['Roboto-Regular']) {              // ✅
+        doc.setFont('Roboto-Regular', 'normal');         // ✅
         useCyrillic = true;
     } else {
-        console.warn('Шрифт Roboto-Regular не подключён — используется Helvetica + транслитерация.');
+        console.warn('Шрифт Roboto-Regular не подключён — используется fallback.');
     }
 } catch (e) {
     console.warn('Не удалось установить шрифт:', e);
