@@ -201,19 +201,18 @@ function exportPDF() {
         // ✅ Пытаемся включить кириллический шрифт Roboto.
         //    Если roboto-font.js не подключён — работаем на Helvetica
         //    и транслитерируем текст (fallback), чтобы не было кракозябр.
-        let useCyrillic = false;
-        try {
-            const fonts = doc.getFontList();
-            if (fonts && fonts.Roboto) {
-                doc.setFont('Roboto', 'normal');
-                useCyrillic = true;
-            } else {
-                console.warn('Шрифт Roboto не подключён — используется Helvetica + транслитерация.');
-            }
-        } catch (e) {
-            console.warn('Не удалось установить Roboto:', e);
-        }
-
+       let useCyrillic = false;
+try {
+    const fonts = doc.getFontList();
+    if (fonts && fonts['Roboto-Regular']) {              // ✅ правильное имя
+        doc.setFont('Roboto-Regular', 'normal');         // ✅ правильное имя
+        useCyrillic = true;
+    } else {
+        console.warn('Шрифт Roboto-Regular не подключён — используется Helvetica + транслитерация.');
+    }
+} catch (e) {
+    console.warn('Не удалось установить шрифт:', e);
+}
         // Хелпер: если кириллица доступна — оставляем как есть, иначе транслит
         const T = (str) => (useCyrillic ? String(str) : translit(str));
 
@@ -243,10 +242,10 @@ function exportPDF() {
         history.forEach((item) => {
             // Новая страница при переполнении
             if (y > 275) {
-                doc.addPage();
-                if (useCyrillic) doc.setFont('Roboto', 'normal'); // шрифт на новой странице
-                y = 20;
-            }
+         doc.addPage();
+         if (useCyrillic) doc.setFont('Roboto-Regular', 'normal');  // ✅ правильное имя
+          y = 20;
+           }
 
             const d = new Date(item.date).toLocaleDateString('ru-RU');
 
